@@ -192,3 +192,64 @@
   <li>A</li>
   <li>A</li>
 </ol>
+
+## Section C: Code-Trace MCQs + Short Answers
+
+### C1. Code-Trace MCQs
+<ol>
+  <li>Node reconnects after error but stops reacting to commands. Most likely missed step is:<br>
+    A. Recreate button pin
+    B. Re-subscribe topic and keep callback active after reconnect
+    C. Disable retain
+    D. Change client ID each loop
+  </li>
+  <li>Both nodes connected, publish seems successful, but other side never toggles. First code check is:<br>
+    A. Topic string exact match between publish and subscribe
+    B. ADC formula
+    C. OLED height
+    D. Serial baud
+  </li>
+  <li>LWT does not appear on monitor after sudden power loss. Most likely issue:<br>
+    A. Missing set_last_will configuration before connect
+    B. QoS set to 1
+    C. Button debounce too long
+    D. Wrong LED pin
+  </li>
+  <li>Messages arrive but callback not executing. Most likely loop issue:<br>
+    A. check_msg not called regularly
+    B. publish too frequent
+    C. keepalive too low only
+    D. status topic retained
+  </li>
+  <li>Late subscriber receives old command and toggles unexpectedly. Most likely design mistake:<br>
+    A. Command topic was published retained
+    B. Status topic retained
+    C. QoS 1 used
+    D. Topic had slash
+  </li>
+</ol>
+
+### Answers: C1
+<ol>
+  <li>B</li>
+  <li>A</li>
+  <li>A</li>
+  <li>A</li>
+  <li>A</li>
+</ol>
+
+### C2. Short-Answer Bank (Model Answers)
+1. Question: Why are status topics retained but command/ack topics usually not retained?
+Model answer: Status represents latest state that late subscribers need immediately; command/ack are transient events and replaying them can trigger stale actions.
+
+2. Question: Explain reconnect-safe sequence after MQTT exception.
+Model answer: Disconnect old client if possible, recreate client, set callback, reconnect, re-subscribe control topics, re-publish retained online state.
+
+3. Question: Why can QoS1 toggle logic produce duplicate visible effects?
+Model answer: QoS1 guarantees at-least-once, so duplicate delivery can occur; pure toggle actions are non-idempotent and may need dedupe tokens.
+
+4. Question: What role does check_msg play in umqtt.simple architecture?
+Model answer: It polls socket for inbound packets and dispatches callback; without it, subscriptions appear dead.
+
+5. Question: Why unique client IDs matter?
+Model answer: Broker uses client ID as session identity; duplicate IDs can cause one client connection to drop when another connects.

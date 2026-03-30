@@ -298,3 +298,64 @@
   <li>B</li>
 </ol>
 
+
+## Section C: Code-Trace MCQs + Short Answers
+
+### C1. Code-Trace MCQs
+<ol>
+  <li>Client connects but never receives NOTIFY. Which code step is most likely missing?<br>
+    A. gattc_read call<br>
+    B. CCCD write to enable notifications<br>
+    C. gap_disconnect call<br>
+    D. LED write call
+  </li>
+  <li>Server receives malformed LED payload and may crash. Best hardening point is:<br>
+    A. In scan callback
+    B. In server write IRQ parse block with validation/try-catch
+    C. In advertise function only
+    D. In temperature conversion
+  </li>
+  <li>Client can read LED but cannot write LED. Most likely code mismatch is:<br>
+    A. Wrong status handle used for write path
+    B. Wrong ADC channel
+    C. Wrong scan interval only
+    D. Wrong debounce interval only
+  </li>
+  <li>After disconnect, clients cannot reconnect to server. Which server branch is key?<br>
+    A. GATTS write branch
+    B. Disconnect IRQ branch that restarts advertising
+    C. Notify branch only
+    D. Temperature read function
+  </li>
+  <li>Notify callback fires but data ignored. Most likely code-level reason:<br>
+    A. Missing RSSI print
+    B. Value handle does not match stored status handle
+    C. LED pin mode is output
+    D. Name filter too long
+  </li>
+</ol>
+
+### Answers: C1
+<ol>
+  <li>B</li>
+  <li>B</li>
+  <li>A</li>
+  <li>B</li>
+  <li>B</li>
+</ol>
+
+### C2. Short-Answer Bank (Model Answers)
+1. Question: Explain full client startup event sequence from scan to notifications.
+Model answer: Scan finds target name, scan stops, connect starts, service and characteristic discovery run, descriptor discovery finds CCCD, client writes 0x0100 to CCCD, then notify events are delivered on status handle.
+
+2. Question: Why keep connection handles in a set on server?
+Model answer: Multiple centrals can connect over time; set allows tracking active links and notifying each connection safely.
+
+3. Question: Why discovered handles are mandatory instead of hardcoded values?
+Model answer: Handle layout can differ by registration order and runtime; discovery ensures read/write/notify operations target correct attributes.
+
+4. Question: Distinguish READ_RESULT vs READ_DONE.
+Model answer: READ_RESULT carries returned value payload; READ_DONE gives completion status code for transaction success/failure.
+
+5. Question: Why use debounce around button actions in client loop?
+Model answer: Mechanical bounce can trigger multiple rapid writes/reads from one press; debounce enforces a minimum action interval.

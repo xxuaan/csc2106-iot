@@ -120,3 +120,98 @@ Example:
 - 404 means path is unknown.
 - Input validation prevents malformed requests from crashing logic.
 - Separate networking/router logic from hardware-control loop for clarity.
+
+## Code Focus
+
+### Actual code files to master
+- assignment/main.py
+- assignment/web_server.py
+
+### Main loop checkpoints
+- Understand Wi-Fi connect state checks and failure handling.
+- Trace accept -> read temp -> read LED state -> call serve_client -> apply returned LED command.
+- Explain why hardware actuation is centralized in main loop.
+
+### Web handler checkpoints
+- Trace request parsing into method, path, headers, and body.
+- Explain route behavior for root, temp, led, and status paths.
+- Explain when to return 200, 400, 404, and 405.
+- Show exactly how content type changes between HTML and JSON responses.
+
+### Code-level test prompts
+- Why does status endpoint need current LED value passed from main?
+- Which parser branch handles JSON, form, and plain text LED body?
+- Where should malformed payload exceptions be trapped to avoid server crash?
+
+## In-Depth Code Walkthrough
+
+### 1) Main loop as orchestrator
+```python
+client_conn, client_addr = s.accept()
+current_temp_c = read_temperature()
+current_led_value = onboard_led.value()
+new_led_state = serve_client(client_conn, current_temp_c, current_led_value)
+
+if new_led_state == 0:
+  onboard_led.value(0)
+elif new_led_state == 1:
+  onboard_led.value(1)
+```
+Why this matters:
+- `main.py` owns hardware reads/writes and keeps request handling deterministic.
+- `serve_client` decides intent; `main.py` applies actuator change.
+
+### 2) HTTP parse skeleton
+```python
+parts = raw.split("\r\n\r\n", 1)
+header_block = parts[0]
+body = parts[1] if len(parts) > 1 else ""
+
+request_line = header_lines[0]
+method, path, _ = request_line.split(" ", 2)
+```
+Why this matters:
+- Shows how method/path/body are extracted from raw socket bytes.
+- Also reveals parser limitation: assumes payload is fully available in one recv.
+
+### 3) LED payload parsing by content type
+```python
+if ct == "application/json":
+  data = json.loads(body)
+  state = data.get("state", None)
+elif ct == "application/x-www-form-urlencoded":
+  # parse state=0 or state=1
+else:
+  txt = body.strip()
+```
+Why this matters:
+- You can explain multi-format input handling in short-answer questions.
+- Input validation drives 400 Bad Request branch.
+
+### 4) Status route JSON contract
+```python
+status_obj = {
+  "temperature": temp_c,
+  "led_on": bool(led_is_active)
+}
+body = json.dumps(status_obj)
+response = http_response(body, status=200, content_type="application/json")
+```
+Why this matters:
+- This is the assignment requirement in code form: JSON body and JSON MIME type.
+
+### 5) Route-method correctness pattern
+```python
+if path == "/temp":
+  if method != "GET":
+    response = http_response(..., status=405)
+elif path == "/led":
+  if method != "POST":
+    response = http_response(..., status=405)
+else:
+  response = http_response(..., status=404)
+```
+Why this matters:
+- Clear exam distinction:
+  - `405`: route exists, wrong method.
+  - `404`: route does not exist.

@@ -77,3 +77,101 @@ OLED helps confirm node state without serial monitor.
 - Checksum detects corruption, not confidentiality.
 - RSSI aids link-quality observation during testing.
 - LoRa P2P here is not LoRaWAN network operation.
+
+## Code Focus
+
+### Actual code files to master
+- assignment/tx.ino
+- assignment/rx.ino
+
+### Transmitter checkpoints
+- Message struct field packing into byte buffer.
+- Checksum generation over header and payload.
+- ACK wait loop timing, retry count, and failure path.
+
+### Receiver checkpoints
+- Packet parse bounds checks and payload length validation.
+- Destination ID filter handling (own ID or broadcast).
+- Checksum verify branch: ACK on pass, NACK on fail.
+- OLED status transitions tied to receive outcomes.
+
+### Protocol checkpoints
+- Explain how ID, msgType, payloadLen, payload, checksum work together.
+- Explain why waitPacketSent is needed before moving on.
+- Explain how ACK timeout tuning affects reliability/latency tradeoff.
+
+### Code-level test prompts
+- Why would TX keep retrying even when RX prints data?
+- Which mismatch causes persistent packet ignore behavior?
+- How do you verify checksum branch using serial logs?
+
+## In-Depth Code Walkthrough
+
+### 1) Message structure and checksum coupling
+```cpp
+struct Message {
+	uint8_t nodeID;
+	uint8_t destID;
+	uint8_t msgType;
+	uint8_t payloadLen;
+	char payload[40];
+	uint8_t checksum;
+};
+```
+Why this matters:
+- Payload length is explicit, so parse boundary checks are possible.
+- Checksum must include exactly the same fields on TX and RX.
+
+### 2) TX send path
+```cpp
+buf[len++] = msg->nodeID;
+buf[len++] = msg->destID;
+buf[len++] = msg->msgType;
+buf[len++] = msg->payloadLen;
+memcpy(&buf[len], msg->payload, msg->payloadLen);
+len += msg->payloadLen;
+buf[len++] = msg->checksum;
+
+rf95.send(buf, len);
+rf95.waitPacketSent();
+```
+Why this matters:
+- Byte layout order defines protocol compatibility.
+- `waitPacketSent()` ensures radio TX is completed before moving to ACK wait logic.
+
+### 3) RX parse safety checks
+```cpp
+if (len < 5) return false;
+msg->payloadLen = buf[idx++];
+if (msg->payloadLen > 40) return false;
+if (len < idx + msg->payloadLen + 1) return false;
+```
+Why this matters:
+- Prevents buffer misuse on malformed or truncated packets.
+- Important short-answer point: parser must reject invalid lengths early.
+
+### 4) ACK/NACK branch logic
+```cpp
+if (calculatedChecksum == msg.checksum) {
+	sendAck(msg.nodeID);
+} else {
+	sendNack(msg.nodeID);
+}
+```
+Why this matters:
+- Reliability loop depends on correct acknowledgment semantics.
+- TX retry outcomes are directly tied to this branch.
+
+### 5) TX retry loop pattern
+```cpp
+while (!ackReceived && retries < MAX_RETRIES) {
+	sendMessage(&msg);
+	ackReceived = waitForAck(ACK_TIMEOUT);
+	if (!ackReceived) {
+		retries++;
+	}
+}
+```
+Why this matters:
+- This is the core reliability mechanism under packet loss.
+- Timeout and retry count should be tuned to channel conditions.

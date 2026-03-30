@@ -95,3 +95,86 @@ Beacon mode is advertising only.
 - CCCD controls notification subscription per connection.
 - Re-advertise after disconnect to remain discoverable.
 - Runtime handle discovery is safer than hardcoding handles.
+
+## Code Focus
+
+### Actual code files to master
+- assignment/ble_server.py
+- assignment/ble_client.py
+
+### Server code checkpoints
+- Verify UUID constants and service registration map to LED and status characteristics.
+- Understand the IRQ branches for connect, disconnect, and write handling.
+- Trace update_status flow: write characteristic values, then notify connected clients.
+- Explain how advertising payload is built and why name filtering works on client side.
+
+### Client code checkpoints
+- Trace scan result -> stop scan -> connect -> discover service -> discover characteristics -> discover descriptors -> write CCCD.
+- Explain handle usage for read/write/notify and why discovered handles are required.
+- Explain button mapping and debounce logic in main loop.
+- Differentiate READ_RESULT/READ_DONE and how notify callback is filtered by status handle.
+
+### Code-level test prompts
+- What fails first if CCCD write is skipped?
+- What changes are needed to support two simultaneous clients cleanly?
+- What error path should handle malformed LED write payload?
+
+## In-Depth Code Walkthrough
+
+### 1) Server GATT registration and handle mapping
+```python
+_LED_CHAR = (_LED_UUID, bluetooth.FLAG_READ | bluetooth.FLAG_WRITE | bluetooth.FLAG_WRITE_NO_RESPONSE,)
+_STATUS_CHAR = (_STATUS_UUID, bluetooth.FLAG_READ | bluetooth.FLAG_NOTIFY,)
+_SERVICE = (_SVC_UUID, (_LED_CHAR, _STATUS_CHAR,),)
+
+self._handles = self._ble.gatts_register_services((_SERVICE,))
+self._led_handle = self._handles[0][0]
+self._status_handle = self._handles[0][1]
+```
+Why this matters:
+- This defines one service with two characteristics and stores concrete runtime handles.
+- All future read/write/notify operations depend on these handles being correct.
+
+### 2) Server write IRQ path (client controls LED)
+```python
+elif event == _IRQ_GATTS_WRITE:
+  conn_handle, value_handle = data
+  if value_handle == self._led_handle:
+    data_rx = self._ble.gatts_read(value_handle)
+    new_state = int(data_rx.decode())
+    onboard_led.value(new_state)
+    self._led_state = new_state
+```
+Why this matters:
+- This is the actuator control path for Task 4.
+- Parse safety should be added here to avoid crashes on malformed payloads.
+
+### 3) Client notify subscription via CCCD
+```python
+if uuid == bluetooth.UUID(0x2902):
+  self._cccd_handle = dsc_handle
+
+self._ble.gattc_write(conn_handle, self._cccd_handle, b'\x01\x00', 0)
+```
+Why this matters:
+- Without this write, notify callbacks never fire even if server sends notifications.
+- `0x0100` enables notification mode for that connection.
+
+### 4) Read flow and result handling
+```python
+def read_led(self):
+  if self._conn_handle is not None and self._led_handle is not None:
+    self._ble.gattc_read(self._conn_handle, self._led_handle)
+
+elif event == _IRQ_GATTC_READ_RESULT:
+  conn_handle, value_handle, value = data
+  led_state = int(bytes(value).decode().strip())
+```
+Why this matters:
+- Read is asynchronous: request now, value arrives later via IRQ event.
+- Good exam answer: distinguish request call vs callback payload path.
+
+### 5) Debug strategy from code
+- If connect works but no notify: inspect descriptor discovery and CCCD write status.
+- If write appears successful but server LED unchanged: check client write handle and server write IRQ branch.
+- If client never connects: verify advertised name string and scan filter target match.

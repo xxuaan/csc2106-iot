@@ -157,3 +157,64 @@
   <li>B</li>
   <li>A</li>
 </ol>
+
+## Section C: Code-Trace MCQs + Short Answers
+
+### C1. Code-Trace MCQs
+<ol>
+  <li>Packet keeps looping forever among nodes. Most likely missing control is:<br>
+    A. Adv interval tuning only
+    B. Dedupe and TTL decrement checks
+    C. ADC conversion
+    D. Node ID print
+  </li>
+  <li>Node re-forwards its own injected packet after hearing bounce. Best fix is:<br>
+    A. Disable scan
+    B. Add own ORIG:MSGID to seen cache during inject
+    C. Increase scan window
+    D. Remove forward function
+  </li>
+  <li>Assignment trigger fires from R packets. Correct filter rule is:<br>
+    A. Count every type
+    B. Exclude type R from counting
+    C. Count only duplicates
+    D. Count self-origin only
+  </li>
+  <li>After some time node stops hearing anything. Likely missing behavior:
+    A. Restart scan in scan-done IRQ
+    B. Recompute NODE_ID
+    C. Reset seen cache each loop
+    D. Force advertise always on
+  </li>
+  <li>Forwarded frame TTL not reducing across hops. Most likely bug:
+    A. Using raw forward without rebuilding frame with ttl-1
+    B. Using RSSI in print
+    C. Short payload data
+    D. Jitter enabled
+  </li>
+</ol>
+
+### Answers: C1
+<ol>
+  <li>B</li>
+  <li>B</li>
+  <li>B</li>
+  <li>A</li>
+  <li>A</li>
+</ol>
+
+### C2. Short-Answer Bank (Model Answers)
+1. Question: Why is ORIG plus MSGID enough for dedupe identity?
+Model answer: ORIG identifies source node and MSGID identifies message instance from that source; pair uniquely represents a logical flooded packet.
+
+2. Question: Why should R packets use TTL 0 in assignment extension?
+Model answer: R is local response summary and should not propagate flood-wide; TTL 0 enforces non-forward behavior.
+
+3. Question: Why inject trigger logic inside RX path instead of timer loop?
+Model answer: Trigger condition depends on arrival of valid new packets; RX path has exact filtering context (dedupe/self/type).
+
+4. Question: What happens if seen cache is too small?
+Model answer: Old keys evict too quickly, repeated packets may be treated as new and re-forwarded, increasing unnecessary traffic.
+
+5. Question: Why keep advertise as short burst instead of always-on transmit?
+Model answer: Burst limits airtime occupancy and better models discrete packet forwarding/injection behavior.

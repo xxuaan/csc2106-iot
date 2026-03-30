@@ -94,3 +94,104 @@ When count reaches 5:
 - TTL prevents infinite propagation.
 - Event-driven injection models reactive IoT behavior.
 - This lab mimics mesh-like relaying but is not BLE Mesh standard.
+
+## Code Focus
+
+### Actual code file to master
+- assignment/mesh_node.py
+
+### Frame and parser checkpoints
+- Understand frame layout M1|ORIG|MSGID|TTL|TYPE|DATA.
+- Explain parse_frame validation and failure returns.
+- Explain why frame_to_name truncation is required for advertising payload limits.
+
+### Flooding control checkpoints
+- seen_check_add de-duplication logic and SEEN_MAX trimming.
+- forward_ttl behavior and TTL decrement boundary.
+- Why own injected packet must be marked seen immediately.
+
+### Assignment trigger checkpoints
+- Count only new, non-self, non-R packets.
+- On fifth packet: print buffer, inject R with TTL 0, reset buffer.
+- Ensure R packets are not forwarded and not counted.
+
+### Code-level test prompts
+- Which line causes endless ping-pong if removed?
+- What happens if scan restart on scan-done is missing?
+- Why is event-driven trigger placed in RX path, not main loop timer?
+
+## In-Depth Code Walkthrough
+
+### 1) Frame build and parse contract
+```python
+def make_frame(orig, msgid, ttl, typ, data):
+	return "M1|{}|{}|{}|{}|{}".format(orig, msgid, ttl, typ, data)
+
+def parse_frame(s):
+	if not s.startswith("M1|"):
+		return None
+	parts = s.split("|", 5)
+	_, orig, msgid, ttl_s, typ, data = parts
+	return orig, msgid, int(ttl_s), typ, data
+```
+Why this matters:
+- Defines the protocol contract all nodes must interpret identically.
+- Parser rejection is first defense against garbage advertisement payloads.
+
+### 2) Burst advertising model
+```python
+def advertise_burst_start(self, frame, duration_ms=ADV_BURST_MS):
+	payload = adv_payload_name(frame_to_name(frame))
+	self.ble.gap_advertise(ADV_INTERVAL_US, adv_data=payload)
+	self._adv_active = True
+	self._adv_stop_ms = time.ticks_add(time.ticks_ms(), duration_ms)
+
+def advertise_burst_service(self):
+	if self._adv_active and time.ticks_diff(time.ticks_ms(), self._adv_stop_ms) >= 0:
+		self.ble.gap_advertise(None)
+		self._adv_active = False
+```
+Why this matters:
+- Simulates discrete packet sending without continuous transmission.
+- Main loop must call service function frequently or ads will not stop on time.
+
+### 3) De-duplication core
+```python
+def seen_check_add(self, key):
+	if key in self.seen:
+		return True
+	self.seen.append(key)
+	if len(self.seen) > SEEN_MAX:
+		del self.seen[0:len(self.seen) - SEEN_MAX]
+	return False
+```
+Why this matters:
+- Prevents reprocessing same logical packet forever.
+- Size cap avoids unbounded memory growth.
+
+### 4) Forwarding with TTL control
+```python
+def forward_ttl(self, orig, msgid, ttl, typ, payload):
+	ttl2 = ttl - 1
+	if ttl2 < 0:
+		return
+	fwd = make_frame(orig, msgid, ttl2, typ, payload)
+	self.advertise_burst_start(fwd)
+```
+Why this matters:
+- Ensures propagation is bounded by hop count.
+- If TTL is not decremented, storms return quickly.
+
+### 5) Assignment event trigger path
+```python
+if typ != "R" and orig != NODE_ID:
+	self.rx_buffer.append((orig, msgid))
+	if len(self.rx_buffer) == 5:
+		self.inject_R()
+
+if typ != "R" and ttl > 0:
+	self.forward_ttl(orig, msgid, ttl, typ, payload)
+```
+Why this matters:
+- Trigger logic and forwarding logic are intentionally separated.
+- `R` packets are excluded from both count and forwarding by design.

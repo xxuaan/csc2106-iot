@@ -81,3 +81,86 @@ Why:
 - LWT gives failure visibility without explicit shutdown publish.
 - Retained is for latest state, not transient events.
 - `check_msg()` polling loop is central in `umqtt.simple` non-threaded flow.
+
+## Code Focus
+
+### Actual code files to master
+- assignment/nodeA.py
+- assignment/nodeB.py
+- picoA.py
+- picoB.py
+
+### Connection and session checkpoints
+- Trace Wi-Fi connect and MQTT client construction with keepalive.
+- Explain set_last_will and retained online status publish sequence.
+- Explain why subscriptions must be re-established after reconnect.
+
+### Message-flow checkpoints
+- NodeA button event publishes TOGGLE to NodeB command topic.
+- NodeB callback validates topic/message and toggles LED.
+- NodeB button event publishes back to NodeA topic for bidirectional control.
+- check_msg polling loop drives callback execution in umqtt.simple.
+
+### Code-level test prompts
+- What breaks if callback is set after subscribe/connect flow?
+- Why should command topics stay non-retained while status topics stay retained?
+- How can QoS1 duplicates affect toggle semantics and how to guard against it?
+
+## In-Depth Code Walkthrough
+
+### 1) Robust MQTT session setup pattern
+```python
+c = MQTTClient(CLIENT_ID, BROKER, keepalive=30)
+c.set_last_will(STATUS_TOPIC, b"offline", retain=True, qos=1)
+c.connect()
+c.set_callback(on_msg)
+c.subscribe(CMD_TOPIC, qos=1)
+c.publish(STATUS_TOPIC, b"online", retain=True, qos=1)
+```
+Why this matters:
+- Encodes availability semantics: retained online + LWT offline.
+- Critical order: connect, callback, subscribe, then steady-state loop.
+
+### 2) Callback-driven actuator control
+```python
+def on_msg(topic, msg):
+  if topic == CMD_TO_B_TOPIC and msg == b"TOGGLE":
+    led.value(0 if led.value() else 1)
+```
+Why this matters:
+- This is the core subscriber behavior in assignment nodes.
+- Topic and payload checks prevent accidental actions from unrelated traffic.
+
+### 3) Polling loop that drives callback execution
+```python
+while True:
+  try:
+    client.check_msg()
+  except Exception:
+    client = make_client()
+  time.sleep(0.02)
+```
+Why this matters:
+- `check_msg()` is mandatory in `umqtt.simple`; no background thread handles inbound packets.
+
+### 4) Reconnect-safe publish helper
+```python
+def publish_toggle(client):
+  try:
+    client.publish(CMD_TO_A_TOPIC, b"TOGGLE", qos=1)
+    return client
+  except Exception:
+    try:
+      client.disconnect()
+    except:
+      pass
+    return make_client()
+```
+Why this matters:
+- Keeps node resilient during transient broker/network failures.
+- Returns a fresh client reference when reconnection occurs.
+
+### 5) Code-level design cautions
+- QoS 1 is at-least-once, so duplicate message processing is possible.
+- Retained command topics can replay stale actions; keep retain for status, not commands.
+- Duplicate client IDs can force broker to drop one session.

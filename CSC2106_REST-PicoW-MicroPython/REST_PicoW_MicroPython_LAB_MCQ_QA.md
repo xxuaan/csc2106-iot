@@ -262,3 +262,64 @@
   <li>B</li>
   <li>B</li>
 </ol>
+
+## Section C: Code-Trace MCQs + Short Answers
+
+### C1. Code-Trace MCQs
+<ol>
+  <li>POST /led returns 200 but LED never changes. Most likely missing code step is:<br>
+    A. Root route handler
+    B. Applying returned LED state in main loop
+    C. Temperature read call
+    D. Wi-Fi reconnect
+  </li>
+  <li>GET /status returns HTML instead of JSON. Which change is required?<br>
+    A. Change port to 443
+    B. Build dict and return with content_type application/json
+    C. Disable LED endpoint
+    D. Change SSID
+  </li>
+  <li>Client sends invalid LED payload and server crashes. Best fix location is:<br>
+    A. In socket bind block
+    B. In LED parse/route branch with guarded parsing
+    C. In Wi-Fi connect
+    D. In serial print
+  </li>
+  <li>Method is wrong for existing path, correct status should be:<br>
+    A. 404
+    B. 405
+    C. 500
+    D. 302
+  </li>
+  <li>Unknown path requested by client should route to:<br>
+    A. 200 root response
+    B. 404 not found branch
+    C. 405 method branch
+    D. Sensor read branch
+  </li>
+</ol>
+
+### Answers: C1
+<ol>
+  <li>B</li>
+  <li>B</li>
+  <li>B</li>
+  <li>B</li>
+  <li>B</li>
+</ol>
+
+### C2. Short-Answer Bank (Model Answers)
+1. Question: Why pass current_led_value into serve_client?
+Model answer: Status endpoint must reflect actual actuator state at request time; passing runtime LED value avoids stale state assumptions.
+
+2. Question: Explain when to return 400 vs 405 vs 404 in this API.
+Model answer: 400 for malformed body/input, 405 when method is unsupported for existing route, 404 for unknown path.
+
+3. Question: Why centralize hardware LED write in main loop rather than deep inside parser?
+Model answer: Keeps separation of concerns: web handler decides command intent, main loop applies hardware actuation consistently.
+
+4. Question: Why set Content-Type explicitly on /status response?
+Model answer: Clients parse behavior by MIME type; application/json is required for machine-readable API contract.
+
+5. Question: What is risk of simplistic recv(1024) parser assumption?
+Model answer: Large or fragmented HTTP requests may not be fully captured in one recv call; parser may miss body completeness in edge cases.
