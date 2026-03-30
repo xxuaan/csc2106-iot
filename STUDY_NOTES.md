@@ -1,5 +1,48 @@
 # CSC2106 IoT Study Notes
 
+## How To Read These Notes (What / Does / Why)
+
+For every concept, revise using this 3-step frame:
+1. What is this: define the component or protocol element.
+2. What does it do: describe runtime behavior or data flow role.
+3. Why is it done: explain engineering reason or tradeoff.
+
+Quick examples:
+- REST `POST /led`
+  - What: endpoint for LED state update.
+  - Does: parses request body and returns command for main loop actuation.
+  - Why: separates remote control intent from direct GPIO code.
+- MQTT retained status topic
+  - What: broker-stored latest status message.
+  - Does: immediately delivers current state to late subscribers.
+  - Why: monitoring clients should not wait for next periodic publish.
+- BLE CCCD
+  - What: notification subscription descriptor.
+  - Does: enables notify when client writes `0x0100`.
+  - Why: push traffic should be explicit and per-connection.
+- LoRa ACK + retry
+  - What: reliability mechanism in application protocol.
+  - Does: retransmits when ACK not received before timeout.
+  - Why: radio loss/interference is normal; retry improves delivery probability.
+
+## Beginner First 30 Minutes (No Prior Background)
+
+If you are totally new, use this order:
+1. Understand communication model per lab:
+   - REST: request-response (client asks, server replies).
+   - MQTT: publish-subscribe via broker.
+   - BLE GATT: central-peripheral connection with characteristics.
+   - BLE flooding mesh demo: advertise/scan rebroadcast with TTL + dedupe.
+   - LoRa P2P: packet radio with ACK/NACK retries.
+2. Learn one full packet/request journey in each lab.
+3. Learn failure handling paths (timeouts, invalid payload, reconnect, dedupe).
+4. Learn only then the implementation details in code.
+
+Use this quick self-check for each concept:
+- Can I define it in one sentence?
+- Can I explain where it appears in runtime flow?
+- Can I explain what breaks if it is removed?
+
 ---
 
 ## Lab 1 — RESTful API on Pico W

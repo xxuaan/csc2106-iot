@@ -7,6 +7,99 @@ This lab implements Bluetooth Low Energy communication between two Raspberry Pi 
 
 You also study Beacon mode, where a node only advertises and does not accept GATT connections.
 
+## Explain It Fast: What / Does / Why
+
+### BLE Peripheral (Server)
+- What is this: a connectable BLE device that exposes GATT services and characteristics.
+- What it does: advertises, accepts connection, stores values, and sends notifications.
+- Why it is done: centralizes sensor/actuator state so clients can read/write it in a standard way.
+
+### BLE Central (Client)
+- What is this: a BLE device that scans and initiates connection.
+- What it does: discovers service/characteristic handles, reads and writes values, subscribes to notify.
+- Why it is done: gives the user-side controller logic and selective access to server data.
+
+### GATT Service and Characteristics
+- What is this: structured data model for BLE application data.
+- What it does: groups related values (LED and status) with permissions (READ/WRITE/NOTIFY).
+- Why it is done: interoperable design and clean separation of data points.
+
+### CCCD (0x2902)
+- What is this: descriptor that controls notify/indicate subscription per connection.
+- What it does: client writes `0x0100` to enable notifications.
+- Why it is done: prevents unnecessary traffic by making server push opt-in.
+
+### IRQ Event-Driven Flow
+- What is this: callback-based BLE control model in MicroPython.
+- What it does: handles scan, connect, discovery, read result, write, and notify events asynchronously.
+- Why it is done: BLE operations complete later; event handling avoids incorrect blocking assumptions.
+
+### Beacon Mode
+- What is this: advertising-only BLE mode (no GATT connection lifecycle).
+- What it does: broadcasts identity/telemetry hints periodically.
+- Why it is done: lowest-overhead presence signaling for discovery scenarios.
+
+## Beginner Deep Dive (If You Are New)
+
+### Mental model
+Think of BLE here like a shop counter:
+- Server (Peripheral) is the shop counter with labeled drawers (characteristics).
+- Client (Central) is the customer that first finds the shop, then asks to read or change drawer values.
+- Notifications are the shop proactively calling you when something changes.
+
+### What happens from power-on to working system
+1. Server starts advertising its name and service UUID.
+2. Client scans nearby BLE advertisements.
+3. Client finds matching target name and connects.
+4. Client discovers service, then characteristics, then descriptors.
+5. Client enables notifications by writing `0x0100` to CCCD.
+6. Normal operation starts:
+   - Read: client asks for current value.
+   - Write: client sends new value (for example LED state).
+   - Notify: server pushes updates without client polling.
+
+### Why this workflow is used
+- Discovery before read/write: handles are runtime values, not guaranteed constants.
+- CCCD opt-in: reduces unnecessary traffic and power consumption.
+- Event-driven IRQ design: BLE actions complete asynchronously, so callbacks are safer than blocking code.
+
+### Beginner mistakes and how to avoid them
+- Mistake: hardcoding characteristic handles.
+  Fix: always discover and store handles after each connection.
+- Mistake: expecting notify to work without CCCD write.
+  Fix: write `0x0100` and verify write success.
+- Mistake: assuming function call order means operation completion.
+  Fix: trust IRQ completion events, not just request calls.
+- Mistake: no button debounce.
+  Fix: enforce minimum press interval to avoid repeated writes.
+
+### Quick interpretation guide for common terms
+- UUID: identity label for a service/characteristic.
+- Handle: runtime numeric address of an ATT attribute.
+- GATTS: server-side BLE operations.
+- GATTC: client-side BLE operations.
+- CCCD: descriptor that enables notify/indicate.
+
+### Beginner Flow Diagram (Text)
+```text
+SERVER (Peripheral)                  CLIENT (Central)
+Boot                                Boot
+  |                                   |
+Advertise name+service UUID         Scan for target name
+  |                                   |
+<----------- Connect request ---------
+  |                                   |
+GATT ready                           Discover service -> characteristics -> descriptors
+  |                                   |
+<------ CCCD write 0x0100 (enable notify)
+  |                                   |
+Notify status updates -------------> Notify callback handles pushed data
+  |                                   |
+Write IRQ handles LED update <----- Client write LED command
+  |                                   |
+Read request served ---------------> Read result event on client
+```
+
 ## 2. BLE Roles
 - Peripheral (Server): advertises and exposes services/characteristics.
 - Central (Client): scans and initiates connection.

@@ -6,6 +6,94 @@ This lab uses Maker UNO + Cytron LoRa-RFM Shield to build peer-to-peer LoRa comm
 - Receiver listens, validates, displays, and sends ACK/NACK.
 - Assignment extends baseline with OLED status, reliability, and simple addressing.
 
+## Explain It Fast: What / Does / Why
+
+### LoRa P2P Link
+- What is this: direct radio communication between nodes without LoRaWAN gateway/server.
+- What it does: sends small payloads over long distance using low data rates.
+- Why it is done: simple deployment and long-range IoT telemetry with low power.
+
+### RH_RF95 (RadioHead)
+- What is this: Arduino driver abstraction for the RF95 LoRa transceiver.
+- What it does: initializes radio, sends packets, receives packets, and exposes RSSI.
+- Why it is done: avoids low-level register programming and accelerates reliable implementation.
+
+### ACK/NACK + Retry
+- What is this: application-level reliability mechanism.
+- What it does: receiver confirms success (ACK) or corruption (NACK); transmitter retries on timeout.
+- Why it is done: radio channels are lossy; retries reduce effective packet loss.
+
+### Checksum
+- What is this: lightweight integrity check over header and payload.
+- What it does: detects accidental corruption during transmission.
+- Why it is done: avoids acting on damaged data and drives NACK branch.
+
+### Destination ID Filtering
+- What is this: packet addressing field checked by receiver.
+- What it does: ignores packets meant for other nodes.
+- Why it is done: cuts noise/crosstalk processing in multi-node environments.
+
+### OLED Status Layer
+- What is this: local runtime state display channel.
+- What it does: shows setup/send/wait/receive outcomes without relying on serial monitor.
+- Why it is done: faster physical debugging and demo visibility.
+
+## Beginner Deep Dive (If You Are New)
+
+### Mental model
+Think of LoRa here like walkie-talkies with receipts:
+- TX sends a message.
+- RX checks whether message is meant for it and whether content is intact.
+- RX sends back ACK (receipt) if valid, or NACK if corrupted.
+- TX retries if no ACK arrives before timeout.
+
+### What a full successful cycle looks like
+1. TX builds packet: header fields + payload + checksum.
+2. TX sends and waits until packet transmission is finished.
+3. RX receives and parses fields safely.
+4. RX validates destination ID and checksum.
+5. RX sends ACK to TX.
+6. TX receives ACK and stops retrying.
+
+### Why each part exists
+- Destination ID: prevents every node from processing every packet.
+- Checksum: catches accidental corruption from radio noise.
+- ACK timeout + retry: improves delivery under interference.
+- `waitPacketSent()`: avoids timing races after send call.
+
+### Beginner mistakes and how to avoid them
+- Mistake: frequency mismatch between nodes.
+	Fix: set identical frequency on TX and RX.
+- Mistake: checksum function differs between TX and RX.
+	Fix: keep field order and covered bytes exactly the same.
+- Mistake: ACK sent to wrong destination ID.
+	Fix: ACK target must be original sender ID.
+- Mistake: treating serial print as proof ACK path works.
+	Fix: verify TX actually receives ACK, not only RX receiving DATA.
+
+### Practical tuning intuition
+- Larger timeout: fewer false retries but slower failure detection.
+- More retries: better reliability but higher airtime and latency.
+- Better OLED/serial logs: faster diagnosis than guessing.
+
+### Beginner Flow Diagram (Text)
+```text
+TX NODE                                      RX NODE
+Boot/init RF95                                Boot/init RF95
+  |                                              |
+Build packet (ID, dest, type, payload, checksum) |
+  |                                              |
+Send packet  -----------------------------------> Receive packet
+WaitPacketSent()                                  Parse + validate length
+  |                                              |
+Start ACK timer                                   Check destID + checksum
+  |                                              |
+If ACK received: success <---------------------- Send ACK
+If ACK timeout: retry                             If checksum fail: send NACK
+  |                                              |
+Stop at max retries                               Show status on OLED/serial
+```
+
 ## 2. LoRa Basics
 - Long-range, low-power radio modulation.
 - Operates in ISM bands.

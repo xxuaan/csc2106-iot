@@ -6,6 +6,92 @@ This lab implements MQTT publish-subscribe communication with Raspberry Pi Pico 
 - Clients: Pico W boards using `umqtt.simple`
 - Core topics include control (`.../led/cmd`), acknowledgements (`.../led/ack`), and status (`.../status`)
 
+## Explain It Fast: What / Does / Why
+
+### MQTT Broker
+- What is this: central message router for all MQTT clients.
+- What it does: receives published messages and forwards them to matching subscribers.
+- Why it is done: decouples devices so publishers do not need direct socket links to each consumer.
+
+### Topic-Based Pub/Sub
+- What is this: string-based routing model (for example, `csc2106/nodeA/led/cmd`).
+- What it does: lets different message types flow independently through dedicated channels.
+- Why it is done: scalable organization and easier filtering/debugging.
+
+### QoS 1
+- What is this: at-least-once delivery mode.
+- What it does: broker acknowledgement improves delivery confidence but may produce duplicates.
+- Why it is done: better reliability than QoS 0 on unstable Wi-Fi links.
+
+### LWT (Last Will)
+- What is this: fallback message broker publishes when client drops unexpectedly.
+- What it does: marks node as `offline` without graceful shutdown code path.
+- Why it is done: health visibility for monitoring clients.
+
+### Retained Messages
+- What is this: broker-stored last value on a topic.
+- What it does: immediately sends latest state to new subscribers.
+- Why it is done: late joiners get current system state without waiting for next publish.
+
+### check_msg Polling
+- What is this: non-blocking inbound message pump in `umqtt.simple`.
+- What it does: triggers callback execution for subscribed topics.
+- Why it is done: this client has no background thread; loop polling is mandatory.
+
+## Beginner Deep Dive (If You Are New)
+
+### Mental model
+Think of MQTT like a post office:
+- Devices do not send directly to each other.
+- They send to broker (post office) with a topic label (address).
+- Anyone subscribed to that topic receives the message.
+
+### End-to-end flow for one command
+1. Node A connects to broker and publishes `TOGGLE` to Node B command topic.
+2. Broker checks subscriptions and forwards to Node B.
+3. Node B callback runs, validates topic/payload, toggles LED.
+4. Node B optionally publishes ACK/status.
+
+### Why design choices matter
+- Separate command and status topics: avoids mixing events with state snapshots.
+- Retained status: late subscribers immediately know current online/offline state.
+- Non-retained command: prevents stale commands replaying after reboot.
+- QoS 1: increases reliability on unstable Wi-Fi, with duplicate risk.
+
+### Beginner mistakes and how to avoid them
+- Mistake: topic typo by one path segment.
+  Fix: keep topic constants centralized and shared.
+- Mistake: forgetting re-subscribe after reconnect.
+  Fix: put subscribe calls in reconnect/setup function.
+- Mistake: callback set but `check_msg()` not called.
+  Fix: call `check_msg()` frequently in main loop.
+- Mistake: using same client ID on two devices.
+  Fix: ensure unique client ID per device.
+
+### Duplicate behavior intuition (QoS 1)
+QoS 1 means at-least-once, not exactly-once.
+- A duplicate command can arrive.
+- Pure toggle commands can flip twice unexpectedly.
+- If needed, add dedupe tokens or make handlers idempotent.
+
+### Beginner Flow Diagram (Text)
+```text
+NODE A                      BROKER (Mosquitto)                    NODE B
+Boot/connect Wi-Fi          Running/listening                     Boot/connect Wi-Fi
+  |                               |                                   |
+Connect MQTT --------------------->|<----------------------------- Connect MQTT
+Set LWT, subscribe/check_msg loop  |      Set LWT, subscribe/check_msg loop
+  |                               |                                   |
+Publish TOGGLE cmd --------------->|-------------------------------> Receive in callback
+  |                               |                                   |
+Publish status online ------------>|-------------------------------> Subscribers get state
+  |                               |                                   |
+Unexpected drop                    | publishes LWT offline ----------> Subscribers see offline
+```
+
+Loop note:
+- `check_msg()` must run regularly or callbacks will not fire.
+
 ## 2. Core MQTT Concepts
 - Broker: routes messages between clients.
 - Client: publisher, subscriber, or both.

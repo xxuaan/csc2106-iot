@@ -4,6 +4,94 @@
 This is a mesh-like flooding demo built on BLE advertising + scanning in MicroPython.
 It is not official Bluetooth SIG Mesh; flooding logic is implemented at application level.
 
+## Explain It Fast: What / Does / Why
+
+### Flooding Mesh (Application-Level)
+- What is this: rebroadcast strategy where each node forwards received messages.
+- What it does: extends coverage beyond direct radio range hop-by-hop.
+- Why it is done: simple mesh-like propagation without full BLE Mesh stack complexity.
+
+### ORIG + MSGID Identity
+- What is this: logical packet identity tuple.
+- What it does: uniquely marks a message across network hops.
+- Why it is done: duplicate detection needs stable identity independent of forwarding node.
+
+### TTL (Hop Limit)
+- What is this: per-message remaining forward budget.
+- What it does: decrements on each forward and drops when exhausted.
+- Why it is done: bounds propagation and prevents infinite loops.
+
+### Seen Cache (De-Dupe)
+- What is this: memory of already-processed `(ORIG, MSGID)` keys.
+- What it does: drops repeated packets quickly.
+- Why it is done: avoids rebroadcast storms and repeated processing.
+
+### Advertise Burst
+- What is this: short timed transmission window per inject/forward.
+- What it does: sends frame briefly, then stops advertising.
+- Why it is done: limits airtime usage and gives scan windows chance to run.
+
+### Assignment `R` Trigger
+- What is this: event-driven response after 5 valid received packets.
+- What it does: injects one `R` packet (`TTL=0`), then resets buffer.
+- Why it is done: demonstrates reactive behavior and selective counting logic.
+
+## Beginner Deep Dive (If You Are New)
+
+### Mental model
+Imagine people in a crowd passing a message by shouting:
+- One person starts message (inject).
+- Anyone who hears it repeats (forward).
+- Without rules, the same message keeps bouncing forever.
+
+### Why flooding needs control rules
+- Rule 1: De-duplication (`ORIG`, `MSGID`) means each node processes each logical message once.
+- Rule 2: TTL means message has limited hop budget.
+- Together they stop storms while still extending range.
+
+### End-to-end packet life
+1. Node creates frame `M1|ORIG|MSGID|TTL|TYPE|DATA`.
+2. Node advertises frame for a short burst.
+3. Neighbor scans, parses, and validates frame.
+4. Neighbor checks seen cache:
+	 - seen before -> drop.
+	 - new -> process.
+5. If non-`R` and TTL > 0, forward with decremented TTL.
+6. If assignment counter condition hits, inject one local `R` with TTL 0.
+
+### Beginner mistakes and how to avoid them
+- Mistake: not marking own injected packet as seen.
+	Fix: insert own `(ORIG, MSGID)` into seen cache immediately.
+- Mistake: forwarding `R` messages.
+	Fix: explicitly block `R` from forward and count logic.
+- Mistake: forgetting scan restart after scan-done event.
+	Fix: restart scan in scan-done IRQ branch.
+- Mistake: no TTL decrement during forward.
+	Fix: rebuild frame with `ttl-1` before advertising.
+
+### Why assignment uses event-driven trigger
+The trigger depends on real received traffic, not time.
+This models reactive IoT behavior: node responds to network events, not just periodic timers.
+
+### Beginner Flow Diagram (Text)
+```text
+NODE A                          NODE B                          NODE C
+Inject frame (ORIG=A,ID=1,TTL=3)
+  |                                |                               |
+Advertise burst -------------------> Scan receives                  |
+                                   Parse + dedupe check            |
+                                   TTL > 0 and new? yes            |
+                                   Forward with TTL=2 ------------> Scan receives
+                                                                   Parse + dedupe check
+                                                                   TTL > 0 and new? yes
+                                                                   Forward with TTL=1
+```
+
+Loop controls at each node:
+- If (ORIG, MSGID) seen before: drop.
+- If TTL <= 0: do not forward.
+- If TYPE is R: do not forward and do not count for trigger.
+
 ## 2. Core Terms
 - Inject: originate a new frame from this node.
 - Forward: rebroadcast frame received from another node.
